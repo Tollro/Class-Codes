@@ -20,10 +20,8 @@ class VoiceAnalyzer:
         """提取声学特征"""
         features = {}
         
-        # 预加重处理（增强高频）
-        # 这里pyin用到不大，若使用梅尔频率倒谱系数（MFCC）较为有用、
+        # 预加重处理（增强高频）这里pyin用到不大，若使用梅尔频率倒谱系数（MFCC）较为有用、
         # 若音频中存在大量低频噪音，预加重可以帮助相对地提升有用信号
-
         # emphasized = np.append(signal[0], signal[1:] - 0.97 * signal[:-1])
         
         # 使用librosa提取基频，f0储存了每个帧对应的估计基频值
@@ -48,7 +46,7 @@ class VoiceAnalyzer:
 class GenderRecognitionApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("高精度语音性别识别系统")
+        self.root.title("语音性别识别系统")
         self.root.geometry("1200x900")
         
         # 初始化参数
@@ -203,26 +201,48 @@ class GenderRecognitionApp:
             # 可视化2：频域频谱
             fft = np.abs(np.fft.rfft(signal))
             fft_db = 20 * np.log10(fft + 1e-6)  # 转换为dB
-            freqs = np.fft.rfftfreq(len(signal), 1/sr)
+            freqs = np.fft.rfftfreq(len(signal), 1/sr) # 
             self.axs['spectrum'].plot(freqs, fft_db)
             self.axs['spectrum'].set_title("频域频谱")
             self.axs['spectrum'].set_xlabel("频率（Hz）")
             self.axs['spectrum'].set_ylabel("幅度（dB）(相对值)")
 
            # 标注关键频段
-            self.axs['spectrum'].axvspan(80, 360, alpha=0.2, color='yellow')  # 人声基频区
+            self.axs['spectrum'].axvspan(80, 320, alpha=0.2, color='yellow')  # 人声基频区
             self.axs['spectrum'].set_xlim(0, 4000)  # 聚焦人声主要频段
             
             # 提取特征
             features = VoiceAnalyzer.extract_features(signal, sr)
+
+           # 查找 F0（在 80~300Hz 范围内找最大值）
+            fmin, fmax = 80, 300
+            mask = (freqs >= fmin) & (freqs <= fmax)
+            if np.any(mask):
+                peak_index_in_mask = np.argmax(fft_db[mask])
+                original_index = np.where(mask)[0][peak_index_in_mask]
+                peak_freq = freqs[original_index]
+                peak_db = fft_db[original_index]
+            else:
+                peak_freq = np.nan
+                peak_db = np.nan
+
+            features['f_peak'] = peak_freq
+
             # 基频标注
-            if features['f0']:
-                self.axs['spectrum'].axvline(features['f0'], color='r', linestyle='--')
+            if features['f_peak']:
+                self.axs['spectrum'].axvline(features['f_peak'], color='r', linestyle='--')
                 self.axs['spectrum'].text(
-                    features['f0'], np.max(fft_db)-10,
-                    f"基频: {features['f0']:.1f}Hz",
+                    features['f_peak'], np.max(fft_db)-10,
+                    f"峰值: {features['f_peak']:.1f}Hz",
                     color='r', ha='center'
                 )
+            # if features['f0']:
+            #     self.axs['spectrum'].axvline(features['f0'], color='b', linestyle='--')
+            #     self.axs['spectrum'].text(
+            #         features['f0'], np.max(fft_db)-10,
+            #         f"中位数: {features['f0']:.1f}Hz",
+            #         color='b', ha='center'
+            #     )
 
             # 判断性别
             if features['f0'] < 160:
@@ -236,6 +256,7 @@ class GenderRecognitionApp:
 采样率：{sr} Hz
 -------------------------
 【关键特征】
+基频峰值：{features['f_peak']:.1f} Hz
 基频中位数：{features['f0']:.1f} Hz
 基频平均数：{features['f0_average']:.1f} Hz
 -------------------------
